@@ -1,26 +1,3 @@
-/* -*- Mode: C; c-basic-offset:8 ; indent-tabs-mode:t -*- */
-/*
- * Linux usbfs backend for libusb
- * Copyright © 2007-2009 Daniel Drake <dsd@gentoo.org>
- * Copyright © 2001 Johannes Erdfelt <johannes@erdfelt.com>
- * Copyright © 2013 Nathan Hjelm <hjelmn@mac.com>
- * Copyright © 2012-2013 Hans de Goede <hdegoede@redhat.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
-
 #include "config.h"
 
 #include <assert.h>
@@ -42,79 +19,19 @@
 #include "libusbi.h"
 #include "linux_usbfs.h"
 
-/* sysfs vs usbfs:
- * opening a usbfs node causes the device to be resumed, so we attempt to
- * avoid this during enumeration.
- *
- * sysfs allows us to read the kernel's in-memory copies of device descriptors
- * and so forth, avoiding the need to open the device:
- *  - The binary "descriptors" file contains all config descriptors since
- *    2.6.26, commit 217a9081d8e69026186067711131b77f0ce219ed
- *  - The binary "descriptors" file was added in 2.6.23, commit
- *    69d42a78f935d19384d1f6e4f94b65bb162b36df, but it only contains the
- *    active config descriptors
- *  - The "busnum" file was added in 2.6.22, commit
- *    83f7d958eab2fbc6b159ee92bf1493924e1d0f72
- *  - The "devnum" file has been present since pre-2.6.18
- *  - the "bConfigurationValue" file has been present since pre-2.6.18
- *
- * If we have bConfigurationValue, busnum, and devnum, then we can determine
- * the active configuration without having to open the usbfs node in RDWR mode.
- * The busnum file is important as that is the only way we can relate sysfs
- * devices to usbfs nodes.
- *
- * If we also have all descriptors, we can obtain the device descriptor and
- * configuration without touching usbfs at all.
- */
-
-/* endianness for multi-byte fields:
- *
- * Descriptors exposed by usbfs have the multi-byte fields in the device
- * descriptor as host endian. Multi-byte fields in the other descriptors are
- * bus-endian. The kernel documentation says otherwise, but it is wrong.
- *
- * In sysfs all descriptors are bus-endian.
- */
-
 static const char *usbfs_path = NULL;
 
 /* use usbdev*.* device names in /dev instead of the usbfs bus directories */
 static int usbdev_names = 0;
 
-/* Linux has changed the maximum length of an individual isochronous packet
- * over time.  Initially this limit was 1,023 bytes, but Linux 2.6.18
- * (commit 3612242e527eb47ee4756b5350f8bdf791aa5ede) increased this value to
- * 8,192 bytes to support higher bandwidth devices.  Linux 3.10
- * (commit e2e2f0ea1c935edcf53feb4c4c8fdb4f86d57dd9) further increased this
- * value to 49,152 bytes to support super speed devices.
- */
 static unsigned int max_iso_packet_len = 0;
 
 /* Linux 2.6.23 adds support for O_CLOEXEC when opening files, which marks the
  * close-on-exec flag in the underlying file descriptor. */
 static int supports_flag_cloexec = -1;
 
-/* Linux 2.6.32 adds support for a bulk continuation URB flag. this basically
- * allows us to mark URBs as being part of a specific logical transfer when
- * we submit them to the kernel. then, on any error except a cancellation, all
- * URBs within that transfer will be cancelled and no more URBs will be
- * accepted for the transfer, meaning that no more data can creep in.
- *
- * The BULK_CONTINUATION flag must be set on all URBs within a bulk transfer
- * (in either direction) except the first.
- * For IN transfers, we must also set SHORT_NOT_OK on all URBs except the
- * last; it means that the kernel should treat a short reply as an error.
- * For OUT transfers, SHORT_NOT_OK must not be set. it isn't needed (OUT
- * transfers can't be short unless there's already some sort of error), and
- * setting this flag is disallowed (a kernel with USB debugging enabled will
- * reject such URBs).
- */
 static int supports_flag_bulk_continuation = -1;
 
-/* Linux 2.6.31 fixes support for the zero length packet URB flag. This
- * allows us to mark URBs that should be followed by a zero length data
- * packet, which can be required by device- or class-specific protocols.
- */
 static int supports_flag_zero_packet = -1;
 
 /* clock ID for monotonic clock, as not all clock sources are available on all

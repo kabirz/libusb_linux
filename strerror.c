@@ -34,32 +34,6 @@
 
 static size_t usbi_locale = 0;
 
-/** \ingroup libusb_misc
- * How to add a new \ref libusb_strerror() translation:
- * <ol>
- * <li> Download the latest \c strerror.c from:<br>
- *      https://raw.github.com/libusb/libusb/master/libusb/strerror.c </li>
- * <li> Open the file in an UTF-8 capable editor </li>
- * <li> Add the 2 letter <a href="http://en.wikipedia.org/wiki/List_of_ISO_639-1_codes">ISO 639-1</a>
- *      code for your locale at the end of \c usbi_locale_supported[]<br>
- *    Eg. for Chinese, you would add "zh" so that:
- *    \code... usbi_locale_supported[] = { "en", "nl", "fr" };\endcode
- *    becomes:
- *    \code... usbi_locale_supported[] = { "en", "nl", "fr", "zh" };\endcode </li>
- * <li> Copy the <tt>{ / * English (en) * / ... }</tt> section and add it at the end of \c usbi_localized_errors<br>
- *    Eg. for Chinese, the last section of \c usbi_localized_errors could look like:
- *    \code
- *     }, { / * Chinese (zh) * /
- *         "Success",
- *         ...
- *         "Other error",
- *     }
- * };\endcode </li>
- * <li> Translate each of the English messages from the section you copied into your language </li>
- * <li> Save the file (in UTF-8 format) and send it to \c libusb-devel\@lists.sourceforge.net </li>
- * </ol>
- */
-
 static const char* usbi_locale_supported[] = { "en", "nl", "fr", "ru", "de", "hu" };
 static const char* usbi_localized_errors[ARRAYSIZE(usbi_locale_supported)][LIBUSB_ERROR_COUNT] = {
 	{ /* English (en) */
@@ -156,35 +130,6 @@ static const char* usbi_localized_errors[ARRAYSIZE(usbi_locale_supported)][LIBUS
 	}
 };
 
-/** \ingroup libusb_misc
- * Set the language, and only the language, not the encoding! used for
- * translatable libusb messages.
- *
- * This takes a locale string in the default setlocale format: lang[-region]
- * or lang[_country_region][.codeset]. Only the lang part of the string is
- * used, and only 2 letter ISO 639-1 codes are accepted for it, such as "de".
- * The optional region, country_region or codeset parts are ignored. This
- * means that functions which return translatable strings will NOT honor the
- * specified encoding. 
- * All strings returned are encoded as UTF-8 strings.
- *
- * If libusb_setlocale() is not called, all messages will be in English.
- *
- * The following functions return translatable strings: libusb_strerror().
- * Note that the libusb log messages controlled through libusb_set_debug()
- * are not translated, they are always in English.
- *
- * For POSIX UTF-8 environments if you want libusb to follow the standard
- * locale settings, call libusb_setlocale(setlocale(LC_MESSAGES, NULL)),
- * after your app has done its locale setup.
- *
- * \param locale locale-string in the form of lang[_country_region][.codeset]
- * or lang[-region], where lang is a 2 letter ISO 639-1 code
- * \returns LIBUSB_SUCCESS on success
- * \returns LIBUSB_ERROR_INVALID_PARAM if the locale doesn't meet the requirements
- * \returns LIBUSB_ERROR_NOT_FOUND if the requested language is not supported
- * \returns a LIBUSB_ERROR code on other errors
- */
 
 int API_EXPORTED libusb_setlocale(const char *locale)
 {
@@ -207,19 +152,6 @@ int API_EXPORTED libusb_setlocale(const char *locale)
 	return LIBUSB_SUCCESS;
 }
 
-/** \ingroup libusb_misc
- * Returns a constant string with a short description of the given error code,
- * this description is intended for displaying to the end user and will be in
- * the language set by libusb_setlocale().
- *
- * The returned string is encoded in UTF-8.
- *
- * The messages always start with a capital letter and end without any dot.
- * The caller must not free() the returned string.
- *
- * \param errcode the error code whose description is desired
- * \returns a short description of the error code in UTF-8 encoding
- */
 DEFAULT_VISIBILITY const char* LIBUSB_CALL libusb_strerror(enum libusb_error errcode)
 {
 	int errcode_index = -errcode;
