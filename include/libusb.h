@@ -1,26 +1,3 @@
-/*
- * Public libusb header file
- * Copyright © 2001 Johannes Erdfelt <johannes@erdfelt.com>
- * Copyright © 2007-2008 Daniel Drake <dsd@gentoo.org>
- * Copyright © 2012 Pete Batard <pete@akeo.ie>
- * Copyright © 2012-2018 Nathan Hjelm <hjelmn@cs.unm.edu>
- * For more information, please visit: http://libusb.info
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
-
 #ifndef LIBUSB_H
 #define LIBUSB_H
 
@@ -91,64 +68,12 @@ typedef unsigned __int32  uint32_t;
 #define LIBUSB_DEPRECATED_FOR(f)
 #endif /* __GNUC__ */
 
-/** \def LIBUSB_CALL
- * \ingroup libusb_misc
- * libusb's Windows calling convention.
- *
- * Under Windows, the selection of available compilers and configurations
- * means that, unlike other platforms, there is not <em>one true calling
- * convention</em> (calling convention: the manner in which parameters are
- * passed to functions in the generated assembly code).
- *
- * Matching the Windows API itself, libusb uses the WINAPI convention (which
- * translates to the <tt>stdcall</tt> convention) and guarantees that the
- * library is compiled in this way. The public header file also includes
- * appropriate annotations so that your own software will use the right
- * convention, even if another convention is being used by default within
- * your codebase.
- *
- * The one consideration that you must apply in your software is to mark
- * all functions which you use as libusb callbacks with this LIBUSB_CALL
- * annotation, so that they too get compiled for the correct calling
- * convention.
- *
- * On non-Windows operating systems, this macro is defined as nothing. This
- * means that you can apply it to your code without worrying about
- * cross-platform compatibility.
- */
-/* LIBUSB_CALL must be defined on both definition and declaration of libusb
- * functions. You'd think that declaration would be enough, but cygwin will
- * complain about conflicting types unless both are marked this way.
- * The placement of this macro is important too; it must appear after the
- * return type, before the function name. See internal documentation for
- * API_EXPORTED.
- */
 #if defined(_WIN32) || defined(__CYGWIN__) || defined(_WIN32_WCE)
 #define LIBUSB_CALL WINAPI
 #else
 #define LIBUSB_CALL
 #endif
 
-/** \def LIBUSB_API_VERSION
- * \ingroup libusb_misc
- * libusb's API version.
- *
- * Since version 1.0.13, to help with feature detection, libusb defines
- * a LIBUSB_API_VERSION macro that gets increased every time there is a
- * significant change to the API, such as the introduction of a new call,
- * the definition of a new macro/enum member, or any other element that
- * libusb applications may want to detect at compilation time.
- *
- * The macro is typically used in an application as follows:
- * \code
- * #if defined(LIBUSB_API_VERSION) && (LIBUSB_API_VERSION >= 0x01001234)
- * // Use one of the newer features from the libusb API
- * #endif
- * \endcode
- *
- * Internally, LIBUSB_API_VERSION is defined as follows:
- * (libusb major << 24) | (libusb minor << 16) | (16 bit incremental)
- */
 #define LIBUSB_API_VERSION 0x01000107
 
 /* The following is kept for compatibility, but will be deprecated in the future */
@@ -158,14 +83,6 @@ typedef unsigned __int32  uint32_t;
 extern "C" {
 #endif
 
-/**
- * \ingroup libusb_misc
- * Convert a 16-bit value from host-endian to little-endian format. On
- * little endian systems, this function does nothing. On big endian systems,
- * the bytes are swapped.
- * \param x the host-endian value to convert
- * \returns the value in little-endian byte order
- */
 static inline uint16_t libusb_cpu_to_le16(const uint16_t x)
 {
 	union {
@@ -177,14 +94,6 @@ static inline uint16_t libusb_cpu_to_le16(const uint16_t x)
 	return _tmp.b16;
 }
 
-/** \def libusb_le16_to_cpu
- * \ingroup libusb_misc
- * Convert a 16-bit value from little-endian to host-endian format. On
- * little endian systems, this function does nothing. On big endian systems,
- * the bytes are swapped.
- * \param x the little-endian value to convert
- * \returns the value in host-endian byte order
- */
 #define libusb_le16_to_cpu libusb_cpu_to_le16
 
 /* standard USB stuff */

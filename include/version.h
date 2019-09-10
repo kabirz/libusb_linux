@@ -1,5 +1,5 @@
 /* This file is parsed by m4 and windres and RC.EXE so please keep it simple. */
-#include "version_nano.h"
+#define LIBUSB_NANO 11397
 #ifndef LIBUSB_MAJOR
 #define LIBUSB_MAJOR 1
 #endif
@@ -8,9 +8,6 @@
 #endif
 #ifndef LIBUSB_MICRO
 #define LIBUSB_MICRO 23
-#endif
-#ifndef LIBUSB_NANO
-#define LIBUSB_NANO 0
 #endif
 /* LIBUSB_RC is the release candidate suffix. Should normally be empty. */
 #ifndef LIBUSB_RC
