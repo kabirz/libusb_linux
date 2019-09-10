@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.2)
 project(usb)
 aux_source_directory(. SRC)
-include_directories(.)
+include_directories(include)
 add_library(usb SHARED ${SRC})
