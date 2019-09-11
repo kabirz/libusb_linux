@@ -44,7 +44,7 @@ void usbi_hotplug_match(struct libusb_context *ctx, struct libusb_device *dev,
 	struct libusb_hotplug_callback *hotplug_cb, *next;
 	int ret;
 
-	usbi_mutex_lock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_lock(&ctx->hotplug_cbs_lock);
 
 	list_for_each_entry_safe(hotplug_cb, next, &ctx->hotplug_cbs, list, struct libusb_hotplug_callback) {
 		if (hotplug_cb->flags & USBI_HOTPLUG_NEEDS_FREE) {
@@ -52,9 +52,9 @@ void usbi_hotplug_match(struct libusb_context *ctx, struct libusb_device *dev,
 			continue;
 		}
 
-		usbi_mutex_unlock(&ctx->hotplug_cbs_lock);
+		pthread_mutex_unlock(&ctx->hotplug_cbs_lock);
 		ret = usbi_hotplug_match_cb(ctx, dev, event, hotplug_cb);
-		usbi_mutex_lock(&ctx->hotplug_cbs_lock);
+		pthread_mutex_lock(&ctx->hotplug_cbs_lock);
 
 		if (ret) {
 			list_del(&hotplug_cb->list);
@@ -62,7 +62,7 @@ void usbi_hotplug_match(struct libusb_context *ctx, struct libusb_device *dev,
 		}
 	}
 
-	usbi_mutex_unlock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_unlock(&ctx->hotplug_cbs_lock);
 }
 
 void usbi_hotplug_notification(struct libusb_context *ctx, struct libusb_device *dev,
@@ -79,12 +79,12 @@ void usbi_hotplug_notification(struct libusb_context *ctx, struct libusb_device 
 	message->event = event;
 	message->device = dev;
 
-	usbi_mutex_lock(&ctx->event_data_lock);
+	pthread_mutex_lock(&ctx->event_data_lock);
 	pending_events = usbi_pending_events(ctx);
 	list_add_tail(&message->list, &ctx->hotplug_msgs);
 	if (!pending_events)
 		usbi_signal_event(ctx);
-	usbi_mutex_unlock(&ctx->event_data_lock);
+	pthread_mutex_unlock(&ctx->event_data_lock);
 }
 
 int API_EXPORTED libusb_hotplug_register_callback(libusb_context *ctx,
@@ -133,7 +133,7 @@ int API_EXPORTED libusb_hotplug_register_callback(libusb_context *ctx,
 	new_callback->cb = cb_fn;
 	new_callback->user_data = user_data;
 
-	usbi_mutex_lock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_lock(&ctx->hotplug_cbs_lock);
 
 	/* protect the handle by the context hotplug lock */
 	new_callback->handle = ctx->next_hotplug_cb_handle++;
@@ -144,7 +144,7 @@ int API_EXPORTED libusb_hotplug_register_callback(libusb_context *ctx,
 
 	list_add(&new_callback->list, &ctx->hotplug_cbs);
 
-	usbi_mutex_unlock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_unlock(&ctx->hotplug_cbs_lock);
 
 	usbi_dbg("new hotplug cb %p with handle %d", new_callback, new_callback->handle);
 
@@ -190,7 +190,7 @@ void API_EXPORTED libusb_hotplug_deregister_callback(struct libusb_context *ctx,
 
 	usbi_dbg("deregister hotplug cb %d", callback_handle);
 
-	usbi_mutex_lock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_lock(&ctx->hotplug_cbs_lock);
 	list_for_each_entry(hotplug_cb, &ctx->hotplug_cbs, list, struct libusb_hotplug_callback) {
 		if (callback_handle == hotplug_cb->handle) {
 			/* Mark this callback for deregistration */
@@ -198,17 +198,17 @@ void API_EXPORTED libusb_hotplug_deregister_callback(struct libusb_context *ctx,
 			deregistered = 1;
 		}
 	}
-	usbi_mutex_unlock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_unlock(&ctx->hotplug_cbs_lock);
 
 	if (deregistered) {
 		int pending_events;
 
-		usbi_mutex_lock(&ctx->event_data_lock);
+		pthread_mutex_lock(&ctx->event_data_lock);
 		pending_events = usbi_pending_events(ctx);
 		ctx->event_flags |= USBI_EVENT_HOTPLUG_CB_DEREGISTERED;
 		if (!pending_events)
 			usbi_signal_event(ctx);
-		usbi_mutex_unlock(&ctx->event_data_lock);
+		pthread_mutex_unlock(&ctx->event_data_lock);
 	}
 }
 
@@ -216,7 +216,7 @@ void usbi_hotplug_deregister(struct libusb_context *ctx, int forced)
 {
 	struct libusb_hotplug_callback *hotplug_cb, *next;
 
-	usbi_mutex_lock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_lock(&ctx->hotplug_cbs_lock);
 	list_for_each_entry_safe(hotplug_cb, next, &ctx->hotplug_cbs, list, struct libusb_hotplug_callback) {
 		if (forced || (hotplug_cb->flags & USBI_HOTPLUG_NEEDS_FREE)) {
 			usbi_dbg("freeing hotplug cb %p with handle %d", hotplug_cb,
@@ -225,5 +225,5 @@ void usbi_hotplug_deregister(struct libusb_context *ctx, int forced)
 			free(hotplug_cb);
 		}
 	}
-	usbi_mutex_unlock(&ctx->hotplug_cbs_lock);
+	pthread_mutex_unlock(&ctx->hotplug_cbs_lock);
 }

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -27,13 +28,13 @@ static const struct libusb_version libusb_version_internal =
 	{ LIBUSB_MAJOR, LIBUSB_MINOR, LIBUSB_MICRO, LIBUSB_NANO,
 	  LIBUSB_RC, "http://libusb.info" };
 static int default_context_refcnt = 0;
-static usbi_mutex_static_t default_context_lock = USBI_MUTEX_INITIALIZER;
+static pthread_mutex_t default_context_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct timespec timestamp_origin = { 0, 0 };
 #ifndef USE_SYSTEM_LOGGING_FACILITY
 static libusb_log_cb log_handler = NULL;
 #endif
 
-usbi_mutex_static_t active_contexts_lock = USBI_MUTEX_INITIALIZER;
+pthread_mutex_t active_contexts_lock = PTHREAD_MUTEX_INITIALIZER;
 struct list_head active_contexts_list;
 
 #define DISCOVERED_DEVICES_SIZE_STEP 8
@@ -100,7 +101,7 @@ struct libusb_device *usbi_alloc_device(struct libusb_context *ctx,
 	if (!dev)
 		return NULL;
 
-	r = usbi_mutex_init(&dev->lock);
+	r = pthread_mutex_init(&dev->lock, NULL);
 	if (r) {
 		free(dev);
 		return NULL;
@@ -124,9 +125,9 @@ void usbi_connect_device(struct libusb_device *dev)
 
 	dev->attached = 1;
 
-	usbi_mutex_lock(&dev->ctx->usb_devs_lock);
+	pthread_mutex_lock(&dev->ctx->usb_devs_lock);
 	list_add(&dev->list, &dev->ctx->usb_devs);
-	usbi_mutex_unlock(&dev->ctx->usb_devs_lock);
+	pthread_mutex_unlock(&dev->ctx->usb_devs_lock);
 
 	if (libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG) && dev->ctx->hotplug_msgs.next) {
 		usbi_hotplug_notification(ctx, dev, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED);
@@ -137,13 +138,13 @@ void usbi_disconnect_device(struct libusb_device *dev)
 {
 	struct libusb_context *ctx = DEVICE_CTX(dev);
 
-	usbi_mutex_lock(&dev->lock);
+	pthread_mutex_lock(&dev->lock);
 	dev->attached = 0;
-	usbi_mutex_unlock(&dev->lock);
+	pthread_mutex_unlock(&dev->lock);
 
-	usbi_mutex_lock(&ctx->usb_devs_lock);
+	pthread_mutex_lock(&ctx->usb_devs_lock);
 	list_del(&dev->list);
-	usbi_mutex_unlock(&ctx->usb_devs_lock);
+	pthread_mutex_unlock(&ctx->usb_devs_lock);
 
 	if (libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG) && dev->ctx->hotplug_msgs.next) {
 		usbi_hotplug_notification(ctx, dev, LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT);
@@ -176,13 +177,13 @@ struct libusb_device *usbi_get_device_by_session_id(struct libusb_context *ctx,
 	struct libusb_device *dev;
 	struct libusb_device *ret = NULL;
 
-	usbi_mutex_lock(&ctx->usb_devs_lock);
+	pthread_mutex_lock(&ctx->usb_devs_lock);
 	list_for_each_entry(dev, &ctx->usb_devs, list, struct libusb_device)
 		if (dev->session_data == session_id) {
 			ret = libusb_ref_device(dev);
 			break;
 		}
-	usbi_mutex_unlock(&ctx->usb_devs_lock);
+	pthread_mutex_unlock(&ctx->usb_devs_lock);
 
 	return ret;
 }
@@ -206,7 +207,7 @@ ssize_t API_EXPORTED libusb_get_device_list(libusb_context *ctx,
 		if (usbi_backend.hotplug_poll)
 			usbi_backend.hotplug_poll();
 
-		usbi_mutex_lock(&ctx->usb_devs_lock);
+		pthread_mutex_lock(&ctx->usb_devs_lock);
 		list_for_each_entry(dev, &ctx->usb_devs, list, struct libusb_device) {
 			discdevs = discovered_devs_append(discdevs, dev);
 
@@ -215,7 +216,7 @@ ssize_t API_EXPORTED libusb_get_device_list(libusb_context *ctx,
 				break;
 			}
 		}
-		usbi_mutex_unlock(&ctx->usb_devs_lock);
+		pthread_mutex_unlock(&ctx->usb_devs_lock);
 	} else {
 		r = usbi_backend.get_device_list(ctx, &discdevs);
 	}
@@ -421,9 +422,9 @@ out:
 DEFAULT_VISIBILITY
 libusb_device * LIBUSB_CALL libusb_ref_device(libusb_device *dev)
 {
-	usbi_mutex_lock(&dev->lock);
+	pthread_mutex_lock(&dev->lock);
 	dev->refcnt++;
-	usbi_mutex_unlock(&dev->lock);
+	pthread_mutex_unlock(&dev->lock);
 	return dev;
 }
 
@@ -434,9 +435,9 @@ void API_EXPORTED libusb_unref_device(libusb_device *dev)
 	if (!dev)
 		return;
 
-	usbi_mutex_lock(&dev->lock);
+	pthread_mutex_lock(&dev->lock);
 	refcnt = --dev->refcnt;
-	usbi_mutex_unlock(&dev->lock);
+	pthread_mutex_unlock(&dev->lock);
 
 	if (refcnt == 0) {
 		usbi_dbg("destroy device %d.%d", dev->bus_number, dev->device_address);
@@ -451,7 +452,7 @@ void API_EXPORTED libusb_unref_device(libusb_device *dev)
 			usbi_disconnect_device(dev);
 		}
 
-		usbi_mutex_destroy(&dev->lock);
+		pthread_mutex_destroy(&dev->lock);
 		free(dev);
 	}
 }
@@ -503,7 +504,7 @@ int API_EXPORTED libusb_wrap_sys_device(libusb_context *ctx, intptr_t sys_dev,
 	if (!_dev_handle)
 		return LIBUSB_ERROR_NO_MEM;
 
-	r = usbi_mutex_init(&_dev_handle->lock);
+	r = pthread_mutex_init(&_dev_handle->lock, NULL);
 	if (r) {
 		free(_dev_handle);
 		return LIBUSB_ERROR_OTHER;
@@ -517,14 +518,14 @@ int API_EXPORTED libusb_wrap_sys_device(libusb_context *ctx, intptr_t sys_dev,
 	r = usbi_backend.wrap_sys_device(ctx, _dev_handle, sys_dev);
 	if (r < 0) {
 		usbi_dbg("wrap_sys_device %p returns %d", (void *)sys_dev, r);
-		usbi_mutex_destroy(&_dev_handle->lock);
+		pthread_mutex_destroy(&_dev_handle->lock);
 		free(_dev_handle);
 		return r;
 	}
 
-	usbi_mutex_lock(&ctx->open_devs_lock);
+	pthread_mutex_lock(&ctx->open_devs_lock);
 	list_add(&_dev_handle->list, &ctx->open_devs);
-	usbi_mutex_unlock(&ctx->open_devs_lock);
+	pthread_mutex_unlock(&ctx->open_devs_lock);
 	*dev_handle = _dev_handle;
 
 	return 0;
@@ -547,7 +548,7 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 	if (!_dev_handle)
 		return LIBUSB_ERROR_NO_MEM;
 
-	r = usbi_mutex_init(&_dev_handle->lock);
+	r = pthread_mutex_init(&_dev_handle->lock, NULL);
 	if (r) {
 		free(_dev_handle);
 		return LIBUSB_ERROR_OTHER;
@@ -562,14 +563,14 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 	if (r < 0) {
 		usbi_dbg("open %d.%d returns %d", dev->bus_number, dev->device_address, r);
 		libusb_unref_device(dev);
-		usbi_mutex_destroy(&_dev_handle->lock);
+		pthread_mutex_destroy(&_dev_handle->lock);
 		free(_dev_handle);
 		return r;
 	}
 
-	usbi_mutex_lock(&ctx->open_devs_lock);
+	pthread_mutex_lock(&ctx->open_devs_lock);
 	list_add(&_dev_handle->list, &ctx->open_devs);
-	usbi_mutex_unlock(&ctx->open_devs_lock);
+	pthread_mutex_unlock(&ctx->open_devs_lock);
 	*dev_handle = _dev_handle;
 
 	return 0;
@@ -617,7 +618,7 @@ static void do_close(struct libusb_context *ctx,
 	struct usbi_transfer *itransfer;
 	struct usbi_transfer *tmp;
 
-	usbi_mutex_lock(&ctx->flying_transfers_lock);
+	pthread_mutex_lock(&ctx->flying_transfers_lock);
 
 	list_for_each_entry_safe(itransfer, tmp, &ctx->flying_transfers, list, struct usbi_transfer) {
 		struct libusb_transfer *transfer =
@@ -626,7 +627,7 @@ static void do_close(struct libusb_context *ctx,
 		if (transfer->dev_handle != dev_handle)
 			continue;
 
-		usbi_mutex_lock(&itransfer->lock);
+		pthread_mutex_lock(&itransfer->lock);
 		if (!(itransfer->state_flags & USBI_TRANSFER_DEVICE_DISAPPEARED)) {
 			usbi_err(ctx, "Device handle closed while transfer was still being processed, but the device is still connected as far as we know");
 
@@ -635,7 +636,7 @@ static void do_close(struct libusb_context *ctx,
 			else
 				usbi_err(ctx, "A cancellation hasn't even been scheduled on the transfer for which the device is closing");
 		}
-		usbi_mutex_unlock(&itransfer->lock);
+		pthread_mutex_unlock(&itransfer->lock);
 
 		list_del(&itransfer->list);
 		transfer->dev_handle = NULL;
@@ -643,15 +644,15 @@ static void do_close(struct libusb_context *ctx,
 		usbi_dbg("Removed transfer %p from the in-flight list because device handle %p closed",
 			 transfer, dev_handle);
 	}
-	usbi_mutex_unlock(&ctx->flying_transfers_lock);
+	pthread_mutex_unlock(&ctx->flying_transfers_lock);
 
-	usbi_mutex_lock(&ctx->open_devs_lock);
+	pthread_mutex_lock(&ctx->open_devs_lock);
 	list_del(&dev_handle->list);
-	usbi_mutex_unlock(&ctx->open_devs_lock);
+	pthread_mutex_unlock(&ctx->open_devs_lock);
 
 	usbi_backend.close(dev_handle);
 	libusb_unref_device(dev_handle->dev);
-	usbi_mutex_destroy(&dev_handle->lock);
+	pthread_mutex_destroy(&dev_handle->lock);
 	free(dev_handle);
 }
 
@@ -669,12 +670,12 @@ void API_EXPORTED libusb_close(libusb_device_handle *dev_handle)
 	handling_events = usbi_handling_events(ctx);
 
 	if (!handling_events) {
-		usbi_mutex_lock(&ctx->event_data_lock);
+		pthread_mutex_lock(&ctx->event_data_lock);
 		pending_events = usbi_pending_events(ctx);
 		ctx->device_close++;
 		if (!pending_events)
 			usbi_signal_event(ctx);
-		usbi_mutex_unlock(&ctx->event_data_lock);
+		pthread_mutex_unlock(&ctx->event_data_lock);
 
 		libusb_lock_events(ctx);
 	}
@@ -682,12 +683,12 @@ void API_EXPORTED libusb_close(libusb_device_handle *dev_handle)
 	do_close(ctx, dev_handle);
 
 	if (!handling_events) {
-		usbi_mutex_lock(&ctx->event_data_lock);
+		pthread_mutex_lock(&ctx->event_data_lock);
 		ctx->device_close--;
 		pending_events = usbi_pending_events(ctx);
 		if (!pending_events)
 			usbi_clear_event(ctx);
-		usbi_mutex_unlock(&ctx->event_data_lock);
+		pthread_mutex_unlock(&ctx->event_data_lock);
 
 		libusb_unlock_events(ctx);
 	}
@@ -749,7 +750,7 @@ int API_EXPORTED libusb_claim_interface(libusb_device_handle *dev_handle,
 	if (!dev_handle->dev->attached)
 		return LIBUSB_ERROR_NO_DEVICE;
 
-	usbi_mutex_lock(&dev_handle->lock);
+	pthread_mutex_lock(&dev_handle->lock);
 	if (dev_handle->claimed_interfaces & (1U << interface_number))
 		goto out;
 
@@ -758,7 +759,7 @@ int API_EXPORTED libusb_claim_interface(libusb_device_handle *dev_handle,
 		dev_handle->claimed_interfaces |= 1U << interface_number;
 
 out:
-	usbi_mutex_unlock(&dev_handle->lock);
+	pthread_mutex_unlock(&dev_handle->lock);
 	return r;
 }
 
@@ -771,7 +772,7 @@ int API_EXPORTED libusb_release_interface(libusb_device_handle *dev_handle,
 	if (interface_number >= USB_MAXINTERFACES)
 		return LIBUSB_ERROR_INVALID_PARAM;
 
-	usbi_mutex_lock(&dev_handle->lock);
+	pthread_mutex_lock(&dev_handle->lock);
 	if (!(dev_handle->claimed_interfaces & (1U << interface_number))) {
 		r = LIBUSB_ERROR_NOT_FOUND;
 		goto out;
@@ -782,7 +783,7 @@ int API_EXPORTED libusb_release_interface(libusb_device_handle *dev_handle,
 		dev_handle->claimed_interfaces &= ~(1U << interface_number);
 
 out:
-	usbi_mutex_unlock(&dev_handle->lock);
+	pthread_mutex_unlock(&dev_handle->lock);
 	return r;
 }
 
@@ -794,17 +795,17 @@ int API_EXPORTED libusb_set_interface_alt_setting(libusb_device_handle *dev_hand
 	if (interface_number >= USB_MAXINTERFACES)
 		return LIBUSB_ERROR_INVALID_PARAM;
 
-	usbi_mutex_lock(&dev_handle->lock);
+	pthread_mutex_lock(&dev_handle->lock);
 	if (!dev_handle->dev->attached) {
-		usbi_mutex_unlock(&dev_handle->lock);
+		pthread_mutex_unlock(&dev_handle->lock);
 		return LIBUSB_ERROR_NO_DEVICE;
 	}
 
 	if (!(dev_handle->claimed_interfaces & (1U << interface_number))) {
-		usbi_mutex_unlock(&dev_handle->lock);
+		pthread_mutex_unlock(&dev_handle->lock);
 		return LIBUSB_ERROR_NOT_FOUND;
 	}
-	usbi_mutex_unlock(&dev_handle->lock);
+	pthread_mutex_unlock(&dev_handle->lock);
 
 	return usbi_backend.set_interface_altsetting(dev_handle, interface_number,
 		alternate_setting);
@@ -1031,7 +1032,7 @@ int API_EXPORTED libusb_init(libusb_context **context)
 	static int first_init = 1;
 	int r = 0;
 
-	usbi_mutex_static_lock(&default_context_lock);
+	pthread_mutex_lock(&default_context_lock);
 
 	if (!timestamp_origin.tv_sec) {
 		usbi_backend.clock_gettime(USBI_CLOCK_REALTIME, &timestamp_origin);
@@ -1040,7 +1041,7 @@ int API_EXPORTED libusb_init(libusb_context **context)
 	if (!context && usbi_default_context) {
 		usbi_dbg("reusing default context");
 		default_context_refcnt++;
-		usbi_mutex_static_unlock(&default_context_lock);
+		pthread_mutex_unlock(&default_context_lock);
 		return 0;
 	}
 
@@ -1065,21 +1066,21 @@ int API_EXPORTED libusb_init(libusb_context **context)
 	usbi_dbg("libusb v%u.%u.%u.%u%s", libusb_version_internal.major, libusb_version_internal.minor,
 		libusb_version_internal.micro, libusb_version_internal.nano, libusb_version_internal.rc);
 
-	usbi_mutex_init(&ctx->usb_devs_lock);
-	usbi_mutex_init(&ctx->open_devs_lock);
-	usbi_mutex_init(&ctx->hotplug_cbs_lock);
+	pthread_mutex_init(&ctx->usb_devs_lock, NULL);
+	pthread_mutex_init(&ctx->open_devs_lock, NULL);
+	pthread_mutex_init(&ctx->hotplug_cbs_lock, NULL);
 	list_init(&ctx->usb_devs);
 	list_init(&ctx->open_devs);
 	list_init(&ctx->hotplug_cbs);
 	ctx->next_hotplug_cb_handle = 1;
 
-	usbi_mutex_static_lock(&active_contexts_lock);
+	pthread_mutex_lock(&active_contexts_lock);
 	if (first_init) {
 		first_init = 0;
 		list_init (&active_contexts_list);
 	}
 	list_add (&ctx->list, &active_contexts_list);
-	usbi_mutex_static_unlock(&active_contexts_lock);
+	pthread_mutex_unlock(&active_contexts_lock);
 
 	if (usbi_backend.init) {
 		r = usbi_backend.init(ctx);
@@ -1091,7 +1092,7 @@ int API_EXPORTED libusb_init(libusb_context **context)
 	if (r < 0)
 		goto err_backend_exit;
 
-	usbi_mutex_static_unlock(&default_context_lock);
+	pthread_mutex_unlock(&default_context_lock);
 
 	if (context)
 		*context = ctx;
@@ -1107,24 +1108,24 @@ err_free_ctx:
 		default_context_refcnt--;
 	}
 
-	usbi_mutex_static_lock(&active_contexts_lock);
+	pthread_mutex_lock(&active_contexts_lock);
 	list_del (&ctx->list);
-	usbi_mutex_static_unlock(&active_contexts_lock);
+	pthread_mutex_unlock(&active_contexts_lock);
 
-	usbi_mutex_lock(&ctx->usb_devs_lock);
+	pthread_mutex_lock(&ctx->usb_devs_lock);
 	list_for_each_entry_safe(dev, next, &ctx->usb_devs, list, struct libusb_device) {
 		list_del(&dev->list);
 		libusb_unref_device(dev);
 	}
-	usbi_mutex_unlock(&ctx->usb_devs_lock);
+	pthread_mutex_unlock(&ctx->usb_devs_lock);
 
-	usbi_mutex_destroy(&ctx->open_devs_lock);
-	usbi_mutex_destroy(&ctx->usb_devs_lock);
-	usbi_mutex_destroy(&ctx->hotplug_cbs_lock);
+	pthread_mutex_destroy(&ctx->open_devs_lock);
+	pthread_mutex_destroy(&ctx->usb_devs_lock);
+	pthread_mutex_destroy(&ctx->hotplug_cbs_lock);
 
 	free(ctx);
 err_unlock:
-	usbi_mutex_static_unlock(&default_context_lock);
+	pthread_mutex_unlock(&default_context_lock);
 	return r;
 }
 
@@ -1137,11 +1138,11 @@ void API_EXPORTED libusb_exit(struct libusb_context *ctx)
 	usbi_dbg("a");
 	USBI_GET_CONTEXT(ctx);
 
-	usbi_mutex_static_lock(&default_context_lock);
+	pthread_mutex_lock(&default_context_lock);
 	if (ctx == usbi_default_context) {
 		if (--default_context_refcnt > 0) {
 			usbi_dbg("not destroying default context");
-			usbi_mutex_static_unlock(&default_context_lock);
+			pthread_mutex_unlock(&default_context_lock);
 			return;
 		}
 		usbi_dbg("destroying default context");
@@ -1149,24 +1150,24 @@ void API_EXPORTED libusb_exit(struct libusb_context *ctx)
 		destroying_default_context = 1;
 	} else {
 		// Unlock default context, as we're not modifying it.
-		usbi_mutex_static_unlock(&default_context_lock);
+		pthread_mutex_unlock(&default_context_lock);
   }
 
-	usbi_mutex_static_lock(&active_contexts_lock);
+	pthread_mutex_lock(&active_contexts_lock);
 	list_del (&ctx->list);
-	usbi_mutex_static_unlock(&active_contexts_lock);
+	pthread_mutex_unlock(&active_contexts_lock);
 
 	if (libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
 		usbi_hotplug_deregister(ctx, 1);
 		if (list_empty(&ctx->open_devs))
 			libusb_handle_events_timeout(ctx, &tv);
 
-		usbi_mutex_lock(&ctx->usb_devs_lock);
+		pthread_mutex_lock(&ctx->usb_devs_lock);
 		list_for_each_entry_safe(dev, next, &ctx->usb_devs, list, struct libusb_device) {
 			list_del(&dev->list);
 			libusb_unref_device(dev);
 		}
-		usbi_mutex_unlock(&ctx->usb_devs_lock);
+		pthread_mutex_unlock(&ctx->usb_devs_lock);
 	}
 
 	if (!list_empty(&ctx->usb_devs))
@@ -1178,14 +1179,14 @@ void API_EXPORTED libusb_exit(struct libusb_context *ctx)
 	if (usbi_backend.exit)
 		usbi_backend.exit(ctx);
 
-	usbi_mutex_destroy(&ctx->open_devs_lock);
-	usbi_mutex_destroy(&ctx->usb_devs_lock);
-	usbi_mutex_destroy(&ctx->hotplug_cbs_lock);
+	pthread_mutex_destroy(&ctx->open_devs_lock);
+	pthread_mutex_destroy(&ctx->usb_devs_lock);
+	pthread_mutex_destroy(&ctx->hotplug_cbs_lock);
 	free(ctx);
 
 	if (destroying_default_context) {
 		usbi_default_context = NULL;
-		usbi_mutex_static_unlock(&default_context_lock);
+		pthread_mutex_unlock(&default_context_lock);
 	}
 }
 
@@ -1349,7 +1350,7 @@ void usbi_log_v(struct libusb_context *ctx, enum libusb_log_level level,
 	if (global_debug) {
 		header_len = snprintf(buf, sizeof(buf),
 			"[%2ld.%06ld] [%08x] libusb: %s [%s] ",
-			(long)now.tv_sec, (long)(now.tv_nsec / 1000L), usbi_get_tid(), prefix, function);
+			(long)now.tv_sec, (long)(now.tv_nsec / 1000L), syscall(SYS_gettid), prefix, function);
 	} else {
 		header_len = snprintf(buf, sizeof(buf),
 			"libusb: %s [%s] ", prefix, function);

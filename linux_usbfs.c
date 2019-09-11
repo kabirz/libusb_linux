@@ -52,9 +52,9 @@ static int sysfs_has_descriptors = -1;
 static int init_count = 0;
 
 /* Serialize hotplug start/stop */
-static usbi_mutex_static_t linux_hotplug_startstop_lock = USBI_MUTEX_INITIALIZER;
+static pthread_mutex_t linux_hotplug_startstop_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Serialize scan-devices, event-thread, and poll */
-usbi_mutex_static_t linux_hotplug_lock = USBI_MUTEX_INITIALIZER;
+pthread_mutex_t linux_hotplug_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int linux_start_event_monitor(void);
 static int linux_stop_event_monitor(void);
@@ -146,9 +146,9 @@ static int _get_usbfs_fd(struct libusb_device *dev, mode_t mode, int silent)
 		return fd; /* Success */
 
 	if (errno == ENOENT) {
-		if (!silent) 
+		if (!silent)
 			usbi_err(ctx, "File doesn't exist, wait %d ms and try again", delay/1000);
-   
+
 		/* Wait 10ms for USB device path creation.*/
 		nanosleep(&(struct timespec){delay / 1000000, (delay * 1000) % 1000000000UL}, NULL);
 
@@ -156,7 +156,7 @@ static int _get_usbfs_fd(struct libusb_device *dev, mode_t mode, int silent)
 		if (fd != -1)
 			return fd; /* Success */
 	}
-	
+
 	if (!silent) {
 		usbi_err(ctx, "libusb couldn't open USB device %s: %s",
 			 path, strerror(errno));
@@ -416,7 +416,7 @@ static int op_init(struct libusb_context *ctx)
 	if (sysfs_has_descriptors)
 		usbi_dbg("sysfs has complete descriptors");
 
-	usbi_mutex_static_lock(&linux_hotplug_startstop_lock);
+	pthread_mutex_lock(&linux_hotplug_startstop_lock);
 	r = LIBUSB_SUCCESS;
 	if (init_count == 0) {
 		/* start up hotplug event handler */
@@ -430,7 +430,7 @@ static int op_init(struct libusb_context *ctx)
 			linux_stop_event_monitor();
 	} else
 		usbi_err(ctx, "error starting hotplug event monitor");
-	usbi_mutex_static_unlock(&linux_hotplug_startstop_lock);
+	pthread_mutex_unlock(&linux_hotplug_startstop_lock);
 
 	return r;
 }
@@ -438,13 +438,13 @@ static int op_init(struct libusb_context *ctx)
 static void op_exit(struct libusb_context *ctx)
 {
 	UNUSED(ctx);
-	usbi_mutex_static_lock(&linux_hotplug_startstop_lock);
+	pthread_mutex_lock(&linux_hotplug_startstop_lock);
 	assert(init_count != 0);
 	if (!--init_count) {
 		/* tear down event handler */
 		(void)linux_stop_event_monitor();
 	}
-	usbi_mutex_static_unlock(&linux_hotplug_startstop_lock);
+	pthread_mutex_unlock(&linux_hotplug_startstop_lock);
 }
 
 static int linux_start_event_monitor(void)
@@ -473,7 +473,7 @@ static int linux_scan_devices(struct libusb_context *ctx)
 {
 	int ret = 0;
 
-	usbi_mutex_static_lock(&linux_hotplug_lock);
+	pthread_mutex_lock(&linux_hotplug_lock);
 
 #if defined(USE_UDEV)
 	ret = linux_udev_scan_devices(ctx);
@@ -481,7 +481,7 @@ static int linux_scan_devices(struct libusb_context *ctx)
 	ret = linux_default_scan_devices(ctx);
 #endif
 
-	usbi_mutex_static_unlock(&linux_hotplug_lock);
+	pthread_mutex_unlock(&linux_hotplug_lock);
 
 	return ret;
 }
@@ -1038,7 +1038,7 @@ static int linux_get_parent_info(struct libusb_device *dev, const char *sysfs_di
 
 retry:
 	/* find the parent in the context */
-	usbi_mutex_lock(&ctx->usb_devs_lock);
+	pthread_mutex_lock(&ctx->usb_devs_lock);
 	list_for_each_entry(it, &ctx->usb_devs, list, struct libusb_device) {
 		struct linux_device_priv *priv = _device_priv(it);
 		if (priv->sysfs_dir) {
@@ -1048,7 +1048,7 @@ retry:
 			}
 		}
 	}
-	usbi_mutex_unlock(&ctx->usb_devs_lock);
+	pthread_mutex_unlock(&ctx->usb_devs_lock);
 
 	if (!dev->parent_dev && add_parent) {
 		usbi_dbg("parent_dev %s not enumerated yet, enumerating now",
@@ -1117,11 +1117,11 @@ void linux_hotplug_enumerate(uint8_t busnum, uint8_t devaddr, const char *sys_na
 {
 	struct libusb_context *ctx;
 
-	usbi_mutex_static_lock(&active_contexts_lock);
+	pthread_mutex_lock(&active_contexts_lock);
 	list_for_each_entry(ctx, &active_contexts_list, list, struct libusb_context) {
 		linux_enumerate_device(ctx, busnum, devaddr, sys_name);
 	}
-	usbi_mutex_static_unlock(&active_contexts_lock);
+	pthread_mutex_unlock(&active_contexts_lock);
 }
 
 void linux_device_disconnected(uint8_t busnum, uint8_t devaddr)
@@ -1130,7 +1130,7 @@ void linux_device_disconnected(uint8_t busnum, uint8_t devaddr)
 	struct libusb_device *dev;
 	unsigned long session_id = busnum << 8 | devaddr;
 
-	usbi_mutex_static_lock(&active_contexts_lock);
+	pthread_mutex_lock(&active_contexts_lock);
 	list_for_each_entry(ctx, &active_contexts_list, list, struct libusb_context) {
 		dev = usbi_get_device_by_session_id (ctx, session_id);
 		if (NULL != dev) {
@@ -1140,7 +1140,7 @@ void linux_device_disconnected(uint8_t busnum, uint8_t devaddr)
 			usbi_dbg("device not found for session %lx", session_id);
 		}
 	}
-	usbi_mutex_static_unlock(&active_contexts_lock);
+	pthread_mutex_unlock(&active_contexts_lock);
 }
 
 #if !defined(USE_UDEV)
@@ -1384,13 +1384,13 @@ static int op_open(struct libusb_device_handle *handle)
 		if (fd == LIBUSB_ERROR_NO_DEVICE) {
 			/* device will still be marked as attached if hotplug monitor thread
 			 * hasn't processed remove event yet */
-			usbi_mutex_static_lock(&linux_hotplug_lock);
+			pthread_mutex_lock(&linux_hotplug_lock);
 			if (handle->dev->attached) {
 				usbi_dbg("open failed with no device, but device still attached");
 				linux_device_disconnected(handle->dev->bus_number,
 						handle->dev->device_address);
 			}
-			usbi_mutex_static_unlock(&linux_hotplug_lock);
+			pthread_mutex_unlock(&linux_hotplug_lock);
 		}
 		return fd;
 	}
@@ -1554,7 +1554,7 @@ static int op_reset_device(struct libusb_device_handle *handle)
 		}
 	}
 
-	usbi_mutex_lock(&handle->lock);
+	pthread_mutex_lock(&handle->lock);
 	r = ioctl(fd, IOCTL_USBFS_RESET, NULL);
 	if (r) {
 		if (errno == ENODEV) {
@@ -1587,7 +1587,7 @@ static int op_reset_device(struct libusb_device_handle *handle)
 		}
 	}
 out:
-	usbi_mutex_unlock(&handle->lock);
+	pthread_mutex_unlock(&handle->lock);
 	return ret;
 }
 
@@ -2317,7 +2317,7 @@ static int handle_bulk_completion(struct usbi_transfer *itransfer,
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
 	int urb_idx = urb - tpriv->urbs;
 
-	usbi_mutex_lock(&itransfer->lock);
+	pthread_mutex_lock(&itransfer->lock);
 	usbi_dbg("handling completion status %d of bulk urb %d/%d", urb->status,
 		urb_idx + 1, tpriv->num_urbs);
 
@@ -2434,13 +2434,13 @@ cancel_remaining:
 	discard_urbs(itransfer, urb_idx + 1, tpriv->num_urbs);
 
 out_unlock:
-	usbi_mutex_unlock(&itransfer->lock);
+	pthread_mutex_unlock(&itransfer->lock);
 	return 0;
 
 completed:
 	free(tpriv->urbs);
 	tpriv->urbs = NULL;
-	usbi_mutex_unlock(&itransfer->lock);
+	pthread_mutex_unlock(&itransfer->lock);
 	return CANCELLED == tpriv->reap_action ?
 		usbi_handle_transfer_cancellation(itransfer) :
 		usbi_handle_transfer_completion(itransfer, tpriv->reap_status);
@@ -2457,7 +2457,7 @@ static int handle_iso_completion(struct usbi_transfer *itransfer,
 	int i;
 	enum libusb_transfer_status status = LIBUSB_TRANSFER_COMPLETED;
 
-	usbi_mutex_lock(&itransfer->lock);
+	pthread_mutex_lock(&itransfer->lock);
 	for (i = 0; i < num_urbs; i++) {
 		if (urb == tpriv->iso_urbs[i]) {
 			urb_idx = i + 1;
@@ -2466,7 +2466,7 @@ static int handle_iso_completion(struct usbi_transfer *itransfer,
 	}
 	if (urb_idx == 0) {
 		usbi_err(TRANSFER_CTX(transfer), "could not locate urb!");
-		usbi_mutex_unlock(&itransfer->lock);
+		pthread_mutex_unlock(&itransfer->lock);
 		return LIBUSB_ERROR_NOT_FOUND;
 	}
 
@@ -2526,10 +2526,10 @@ static int handle_iso_completion(struct usbi_transfer *itransfer,
 			usbi_dbg("CANCEL: last URB handled, reporting");
 			free_iso_urbs(tpriv);
 			if (tpriv->reap_action == CANCELLED) {
-				usbi_mutex_unlock(&itransfer->lock);
+				pthread_mutex_unlock(&itransfer->lock);
 				return usbi_handle_transfer_cancellation(itransfer);
 			} else {
-				usbi_mutex_unlock(&itransfer->lock);
+				pthread_mutex_unlock(&itransfer->lock);
 				return usbi_handle_transfer_completion(itransfer,
 					LIBUSB_TRANSFER_ERROR);
 			}
@@ -2558,12 +2558,12 @@ static int handle_iso_completion(struct usbi_transfer *itransfer,
 	if (urb_idx == num_urbs) {
 		usbi_dbg("last URB in transfer --> complete!");
 		free_iso_urbs(tpriv);
-		usbi_mutex_unlock(&itransfer->lock);
+		pthread_mutex_unlock(&itransfer->lock);
 		return usbi_handle_transfer_completion(itransfer, status);
 	}
 
 out:
-	usbi_mutex_unlock(&itransfer->lock);
+	pthread_mutex_unlock(&itransfer->lock);
 	return 0;
 }
 
@@ -2573,7 +2573,7 @@ static int handle_control_completion(struct usbi_transfer *itransfer,
 	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	int status;
 
-	usbi_mutex_lock(&itransfer->lock);
+	pthread_mutex_lock(&itransfer->lock);
 	usbi_dbg("handling completion status %d", urb->status);
 
 	itransfer->transferred += urb->actual_length;
@@ -2584,7 +2584,7 @@ static int handle_control_completion(struct usbi_transfer *itransfer,
 				"cancel: unrecognised urb status %d", urb->status);
 		free(tpriv->urbs);
 		tpriv->urbs = NULL;
-		usbi_mutex_unlock(&itransfer->lock);
+		pthread_mutex_unlock(&itransfer->lock);
 		return usbi_handle_transfer_cancellation(itransfer);
 	}
 
@@ -2625,7 +2625,7 @@ static int handle_control_completion(struct usbi_transfer *itransfer,
 
 	free(tpriv->urbs);
 	tpriv->urbs = NULL;
-	usbi_mutex_unlock(&itransfer->lock);
+	pthread_mutex_unlock(&itransfer->lock);
 	return usbi_handle_transfer_completion(itransfer, status);
 }
 
@@ -2677,7 +2677,7 @@ static int op_handle_events(struct libusb_context *ctx,
 	int r;
 	unsigned int i = 0;
 
-	usbi_mutex_lock(&ctx->open_devs_lock);
+	pthread_mutex_lock(&ctx->open_devs_lock);
 	for (i = 0; i < nfds && num_ready > 0; i++) {
 		struct pollfd *pollfd = &fds[i];
 		struct libusb_device_handle *handle;
@@ -2708,11 +2708,11 @@ static int op_handle_events(struct libusb_context *ctx,
 
 			/* device will still be marked as attached if hotplug monitor thread
 			 * hasn't processed remove event yet */
-			usbi_mutex_static_lock(&linux_hotplug_lock);
+			pthread_mutex_lock(&linux_hotplug_lock);
 			if (handle->dev->attached)
 				linux_device_disconnected(handle->dev->bus_number,
 						handle->dev->device_address);
-			usbi_mutex_static_unlock(&linux_hotplug_lock);
+			pthread_mutex_unlock(&linux_hotplug_lock);
 
 			if (hpriv->caps & USBFS_CAP_REAP_AFTER_DISCONNECT) {
 				do {
@@ -2735,7 +2735,7 @@ static int op_handle_events(struct libusb_context *ctx,
 
 	r = 0;
 out:
-	usbi_mutex_unlock(&ctx->open_devs_lock);
+	pthread_mutex_unlock(&ctx->open_devs_lock);
 	return r;
 }
 

@@ -181,11 +181,11 @@ static void *linux_udev_event_thread_main(void *arg)
 			break;
 		}
 		if (fds[1].revents & POLLIN) {
-			usbi_mutex_static_lock(&linux_hotplug_lock);
+			pthread_mutex_lock(&linux_hotplug_lock);
 			udev_dev = udev_monitor_receive_device(udev_monitor);
 			if (udev_dev)
 				udev_hotplug_event(udev_dev);
-			usbi_mutex_static_unlock(&linux_hotplug_lock);
+			pthread_mutex_unlock(&linux_hotplug_lock);
 		}
 	}
 
@@ -295,7 +295,7 @@ void linux_udev_hotplug_poll(void)
 {
 	struct udev_device* udev_dev;
 
-	usbi_mutex_static_lock(&linux_hotplug_lock);
+	pthread_mutex_lock(&linux_hotplug_lock);
 	do {
 		udev_dev = udev_monitor_receive_device(udev_monitor);
 		if (udev_dev) {
@@ -303,5 +303,5 @@ void linux_udev_hotplug_poll(void)
 			udev_hotplug_event(udev_dev);
 		}
 	} while (udev_dev);
-	usbi_mutex_static_unlock(&linux_hotplug_lock);
+	pthread_mutex_unlock(&linux_hotplug_lock);
 }

@@ -169,7 +169,7 @@ struct usbfs_streams {
 #define IOCTL_USBFS_ALLOC_STREAMS	_IOR('U', 28, struct usbfs_streams)
 #define IOCTL_USBFS_FREE_STREAMS	_IOR('U', 29, struct usbfs_streams)
 
-extern usbi_mutex_static_t linux_hotplug_lock;
+extern pthread_mutex_t linux_hotplug_lock;
 
 #if defined(HAVE_LIBUDEV)
 int linux_udev_start_event_monitor(void);

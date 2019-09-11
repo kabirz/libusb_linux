@@ -312,17 +312,17 @@ struct libusb_context {
 	int event_pipe[2];
 
 	struct list_head usb_devs;
-	usbi_mutex_t usb_devs_lock;
+	pthread_mutex_t usb_devs_lock;
 
 	/* A list of open handles. Backends are free to traverse this if required.
 	 */
 	struct list_head open_devs;
-	usbi_mutex_t open_devs_lock;
+	pthread_mutex_t open_devs_lock;
 
 	/* A list of registered hotplug callbacks */
 	struct list_head hotplug_cbs;
 	libusb_hotplug_callback_handle next_hotplug_cb_handle;
-	usbi_mutex_t hotplug_cbs_lock;
+	pthread_mutex_t hotplug_cbs_lock;
 
 	/* this is a list of in-flight transfer handles, sorted by timeout
 	 * expiration. URBs to timeout the soonest are placed at the beginning of
@@ -331,7 +331,7 @@ struct libusb_context {
 	struct list_head flying_transfers;
 	/* Note paths taking both this and usbi_transfer->lock must always
 	 * take this lock first */
-	usbi_mutex_t flying_transfers_lock;
+	pthread_mutex_t flying_transfers_lock;
 
 	/* user callbacks for pollfd changes */
 	libusb_pollfd_added_cb fd_added_cb;
@@ -339,22 +339,22 @@ struct libusb_context {
 	void *fd_cb_user_data;
 
 	/* ensures that only one thread is handling events at any one time */
-	usbi_mutex_t events_lock;
+	pthread_mutex_t events_lock;
 
 	/* used to see if there is an active thread doing event handling */
 	int event_handler_active;
 
 	/* A thread-local storage key to track which thread is performing event
 	 * handling */
-	usbi_tls_key_t event_handling_key;
+	pthread_key_t event_handling_key;
 
 	/* used to wait for event completion in threads other than the one that is
 	 * event handling */
-	usbi_mutex_t event_waiters_lock;
-	usbi_cond_t event_waiters_cond;
+	pthread_mutex_t event_waiters_lock;
+	pthread_cond_t event_waiters_cond;
 
 	/* A lock to protect internal context event data. */
-	usbi_mutex_t event_data_lock;
+	pthread_mutex_t event_data_lock;
 
 	/* A bitmask of flags that are set to indicate specific events that need to
 	 * be handled. Protected by event_data_lock. */
@@ -403,13 +403,13 @@ enum usbi_event_flags {
 
 /* Macros for managing event handling state */
 #define usbi_handling_events(ctx) \
-	(usbi_tls_key_get((ctx)->event_handling_key) != NULL)
+	(pthread_getspecific((ctx)->event_handling_key) != NULL)
 
 #define usbi_start_event_handling(ctx) \
-	usbi_tls_key_set((ctx)->event_handling_key, ctx)
+	pthread_setspecific((ctx)->event_handling_key, ctx)
 
 #define usbi_end_event_handling(ctx) \
-	usbi_tls_key_set((ctx)->event_handling_key, NULL)
+	pthread_setspecific((ctx)->event_handling_key, NULL)
 
 /* Update the following macro if new event sources are added */
 #define usbi_pending_events(ctx) \
@@ -425,7 +425,7 @@ enum usbi_event_flags {
 struct libusb_device {
 	/* lock protects refcnt, everything else is finalized at initialization
 	 * time */
-	usbi_mutex_t lock;
+	pthread_mutex_t lock;
 	int refcnt;
 
 	struct libusb_context *ctx;
@@ -448,7 +448,7 @@ struct libusb_device {
 
 struct libusb_device_handle {
 	/* lock protects claimed_interfaces */
-	usbi_mutex_t lock;
+	pthread_mutex_t lock;
 	unsigned long claimed_interfaces;
 
 	struct list_head list;
@@ -495,7 +495,7 @@ struct usbi_transfer {
 	 * if this were possible).
 	 * Note paths taking both this and the flying_transfers_lock must
 	 * always take the flying_transfers_lock first */
-	usbi_mutex_t lock;
+	pthread_mutex_t lock;
 };
 
 enum usbi_transfer_state_flags {
@@ -1201,7 +1201,7 @@ struct usbi_os_backend {
 extern const struct usbi_os_backend usbi_backend;
 
 extern struct list_head active_contexts_list;
-extern usbi_mutex_static_t active_contexts_lock;
+extern pthread_mutex_t active_contexts_lock;
 
 #ifdef __cplusplus
 }
