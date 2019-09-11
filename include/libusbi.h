@@ -290,11 +290,8 @@ static inline void usbi_dbg(const char *format, ...)
 #define IS_XFEROUT(xfer)	(!IS_XFERIN(xfer))
 
 /* Internal abstraction for thread synchronization */
-#if defined(THREADS_POSIX)
-#include "threads_posix.h"
-#elif defined(OS_WINDOWS) || defined(OS_WINCE)
-#include "threads_windows.h"
-#endif
+#include <pthread.h>
+#include <sys/syscall.h>
 
 extern struct libusb_context *usbi_default_context;
 

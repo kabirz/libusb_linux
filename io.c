@@ -600,6 +600,7 @@ void API_EXPORTED libusb_unlock_event_waiters(libusb_context *ctx)
 
 int API_EXPORTED libusb_wait_for_event(libusb_context *ctx, struct timeval *tv)
 {
+	struct timespec timeout;
 	int r;
 
 	USBI_GET_CONTEXT(ctx);
@@ -608,8 +609,19 @@ int API_EXPORTED libusb_wait_for_event(libusb_context *ctx, struct timeval *tv)
 		return 0;
 	}
 
-	r = usbi_cond_timedwait(&ctx->event_waiters_cond,
-		&ctx->event_waiters_lock, tv);
+	r = usbi_backend.clock_gettime(USBI_CLOCK_REALTIME, &timeout);
+	if (r < 0)
+		return r;
+
+	timeout.tv_sec += tv->tv_sec;
+	timeout.tv_nsec += tv->tv_usec * 1000;
+	while (timeout.tv_nsec >= 1000000000L) {
+		timeout.tv_nsec -= 1000000000L;
+		timeout.tv_sec++;
+	}
+
+	r = pthread_cond_timedwait(&ctx->event_waiters_cond,
+		&ctx->event_waiters_lock, &timeout);
 
 	if (r < 0)
 		return r;
