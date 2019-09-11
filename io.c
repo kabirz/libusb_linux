@@ -1208,7 +1208,6 @@ DEFAULT_VISIBILITY
 const struct libusb_pollfd **libusb_get_pollfds(
 	libusb_context *ctx)
 {
-#ifndef OS_WINDOWS
 	struct libusb_pollfd **ret = NULL;
 	struct usbi_pollfd *ipollfd;
 	size_t i = 0;
@@ -1227,11 +1226,6 @@ const struct libusb_pollfd **libusb_get_pollfds(
 out:
 	pthread_mutex_unlock(&ctx->event_data_lock);
 	return (const struct libusb_pollfd **) ret;
-#else
-	usbi_err(ctx, "external polling of libusb's internal descriptors "\
-		"is not yet supported on Windows platforms");
-	return NULL;
-#endif
 }
 
 void API_EXPORTED libusb_free_pollfds(const struct libusb_pollfd **pollfds)

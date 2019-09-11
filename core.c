@@ -7,10 +7,6 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-#ifdef __ANDROID__
-#include <android/log.h>
-#endif
-
 #include "libusbi.h"
 #include "hotplug.h"
 
@@ -1197,36 +1193,6 @@ int API_EXPORTED libusb_has_capability(uint32_t capability)
 }
 
 #ifdef ENABLE_LOGGING
-
-#ifdef LIBUSB_PRINTF_WIN32
-
-int usbi_snprintf(char *str, size_t size, const char *format, ...)
-{
-	va_list ap;
-	int ret;
-
-	va_start(ap, format);
-	ret = usbi_vsnprintf(str, size, format, ap);
-	va_end(ap);
-
-	return ret;
-}
-
-int usbi_vsnprintf(char *str, size_t size, const char *format, va_list ap)
-{
-	int ret;
-
-	ret = _vsnprintf(str, size, format, ap);
-	if (ret < 0 || ret == (int)size) {
-		str[size - 1] = '\0';
-		if (ret < 0)
-			ret = _vsnprintf(NULL, 0, format, ap);
-	}
-
-	return ret;
-}
-#endif /* LIBUSB_PRINTF_WIN32 */
-
 static void usbi_log_str(enum libusb_log_level level, const char *str)
 {
 	/* Global log handler */

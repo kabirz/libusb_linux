@@ -58,10 +58,6 @@ static int linux_scan_devices(struct libusb_context *ctx);
 static int sysfs_scan_device(struct libusb_context *ctx, const char *devname);
 static int detach_kernel_driver_and_claim(struct libusb_device_handle *, int);
 
-#if !defined(USE_UDEV)
-static int linux_default_scan_devices (struct libusb_context *ctx);
-#endif
-
 struct kernel_version {
 	int major;
 	int minor;
@@ -257,10 +253,8 @@ static const char *find_usbfs_path(void)
  * simply assume /dev/bus/usb rather then making libusb_init fail.
  * Make the same assumption for Android where SELinux policies might block us
  * from reading /dev on newer devices. */
-#if defined(USE_UDEV) || defined(__ANDROID__)
 	if (ret == NULL)
 		ret = "/dev/bus/usb";
-#endif
 
 	if (ret != NULL)
 		usbi_dbg("found usbfs at %s", ret);
@@ -449,11 +443,7 @@ static int linux_scan_devices(struct libusb_context *ctx)
 
 	pthread_mutex_lock(&linux_hotplug_lock);
 
-#if defined(USE_UDEV)
 	ret = linux_udev_scan_devices(ctx);
-#elif !defined(__ANDROID__)
-	ret = linux_default_scan_devices(ctx);
-#endif
 
 	pthread_mutex_unlock(&linux_hotplug_lock);
 
@@ -1108,95 +1098,6 @@ void linux_device_disconnected(uint8_t busnum, uint8_t devaddr)
 	pthread_mutex_unlock(&active_contexts_lock);
 }
 
-#if !defined(USE_UDEV)
-/* open a bus directory and adds all discovered devices to the context */
-static int usbfs_scan_busdir(struct libusb_context *ctx, uint8_t busnum)
-{
-	DIR *dir;
-	char dirpath[PATH_MAX];
-	struct dirent *entry;
-	int r = LIBUSB_ERROR_IO;
-
-	snprintf(dirpath, PATH_MAX, "%s/%03d", usbfs_path, busnum);
-	usbi_dbg("%s", dirpath);
-	dir = opendir(dirpath);
-	if (!dir) {
-		usbi_err(ctx, "opendir '%s' failed, errno=%d", dirpath, errno);
-		/* FIXME: should handle valid race conditions like hub unplugged
-		 * during directory iteration - this is not an error */
-		return r;
-	}
-
-	while ((entry = readdir(dir))) {
-		int devaddr;
-
-		if (entry->d_name[0] == '.')
-			continue;
-
-		devaddr = atoi(entry->d_name);
-		if (devaddr == 0) {
-			usbi_dbg("unknown dir entry %s", entry->d_name);
-			continue;
-		}
-
-		if (linux_enumerate_device(ctx, busnum, (uint8_t) devaddr, NULL)) {
-			usbi_dbg("failed to enumerate dir entry %s", entry->d_name);
-			continue;
-		}
-
-		r = 0;
-	}
-
-	closedir(dir);
-	return r;
-}
-
-static int usbfs_get_device_list(struct libusb_context *ctx)
-{
-	struct dirent *entry;
-	DIR *buses = opendir(usbfs_path);
-	int r = 0;
-
-	if (!buses) {
-		usbi_err(ctx, "opendir buses failed errno=%d", errno);
-		return LIBUSB_ERROR_IO;
-	}
-
-	while ((entry = readdir(buses))) {
-		int busnum;
-
-		if (entry->d_name[0] == '.')
-			continue;
-
-		if (usbdev_names) {
-			int devaddr;
-			if (!_is_usbdev_entry(entry, &busnum, &devaddr))
-				continue;
-
-			r = linux_enumerate_device(ctx, busnum, (uint8_t) devaddr, NULL);
-			if (r < 0) {
-				usbi_dbg("failed to enumerate dir entry %s", entry->d_name);
-				continue;
-			}
-		} else {
-			busnum = atoi(entry->d_name);
-			if (busnum == 0) {
-				usbi_dbg("unknown dir entry %s", entry->d_name);
-				continue;
-			}
-
-			r = usbfs_scan_busdir(ctx, busnum);
-			if (r < 0)
-				break;
-		}
-	}
-
-	closedir(buses);
-	return r;
-
-}
-#endif
-
 static int sysfs_scan_device(struct libusb_context *ctx, const char *devname)
 {
 	uint8_t busnum, devaddr;
@@ -1210,62 +1111,6 @@ static int sysfs_scan_device(struct libusb_context *ctx, const char *devname)
 	return linux_enumerate_device(ctx, busnum & 0xff, devaddr & 0xff,
 		devname);
 }
-
-#if !defined(USE_UDEV)
-static int sysfs_get_device_list(struct libusb_context *ctx)
-{
-	DIR *devices = opendir(SYSFS_DEVICE_PATH);
-	struct dirent *entry;
-	int num_devices = 0;
-	int num_enumerated = 0;
-
-	if (!devices) {
-		usbi_err(ctx, "opendir devices failed errno=%d", errno);
-		return LIBUSB_ERROR_IO;
-	}
-
-	while ((entry = readdir(devices))) {
-		if ((!isdigit(entry->d_name[0]) && strncmp(entry->d_name, "usb", 3))
-				|| strchr(entry->d_name, ':'))
-			continue;
-
-		num_devices++;
-
-		if (sysfs_scan_device(ctx, entry->d_name)) {
-			usbi_dbg("failed to enumerate dir entry %s", entry->d_name);
-			continue;
-		}
-
-		num_enumerated++;
-	}
-
-	closedir(devices);
-
-	/* successful if at least one device was enumerated or no devices were found */
-	if (num_enumerated || !num_devices)
-		return LIBUSB_SUCCESS;
-	else
-		return LIBUSB_ERROR_IO;
-}
-
-static int linux_default_scan_devices (struct libusb_context *ctx)
-{
-	/* we can retrieve device list and descriptors from sysfs or usbfs.
-	 * sysfs is preferable, because if we use usbfs we end up resuming
-	 * any autosuspended USB devices. however, sysfs is not available
-	 * everywhere, so we need a usbfs fallback too.
-	 *
-	 * as described in the "sysfs vs usbfs" comment at the top of this
-	 * file, sometimes we have sysfs but not enough information to
-	 * relate sysfs devices to usbfs nodes.  op_init() determines the
-	 * adequacy of sysfs and sets sysfs_can_relate_devices.
-	 */
-	if (sysfs_can_relate_devices != 0)
-		return sysfs_get_device_list(ctx);
-	else
-		return usbfs_get_device_list(ctx);
-}
-#endif
 
 static int initialize_handle(struct libusb_device_handle *handle, int fd)
 {
