@@ -1,20 +1,12 @@
-#include <config.h>
-
+#define _GNU_SOURCE
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
-#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
-#endif
-#ifdef HAVE_SYSLOG_H
-#include <syslog.h>
-#endif
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -1238,46 +1230,11 @@ int usbi_vsnprintf(char *str, size_t size, const char *format, va_list ap)
 
 static void usbi_log_str(enum libusb_log_level level, const char *str)
 {
-#if defined(USE_SYSTEM_LOGGING_FACILITY)
-#if defined(OS_WINDOWS) || defined(OS_WINCE)
-#if !defined(UNICODE)
-	OutputDebugStringA(str);
-#else
-	WCHAR wbuf[USBI_MAX_LOG_LEN];
-	if (MultiByteToWideChar(CP_UTF8, 0, str, -1, wbuf, sizeof(wbuf)) != 0)
-		OutputDebugStringW(wbuf);
-#endif
-#elif defined(__ANDROID__)
-	int priority = ANDROID_LOG_UNKNOWN;
-	switch (level) {
-	case LIBUSB_LOG_LEVEL_NONE: return;
-	case LIBUSB_LOG_LEVEL_ERROR: priority = ANDROID_LOG_ERROR; break;
-	case LIBUSB_LOG_LEVEL_WARNING: priority = ANDROID_LOG_WARN; break;
-	case LIBUSB_LOG_LEVEL_INFO: priority = ANDROID_LOG_INFO; break;
-	case LIBUSB_LOG_LEVEL_DEBUG: priority = ANDROID_LOG_DEBUG; break;
-	}
-	__android_log_write(priority, "libusb", str);
-#elif defined(HAVE_SYSLOG_FUNC)
-	int syslog_level = LOG_INFO;
-	switch (level) {
-	case LIBUSB_LOG_LEVEL_NONE: return;
-	case LIBUSB_LOG_LEVEL_ERROR: syslog_level = LOG_ERR; break;
-	case LIBUSB_LOG_LEVEL_WARNING: syslog_level = LOG_WARNING; break;
-	case LIBUSB_LOG_LEVEL_INFO: syslog_level = LOG_INFO; break;
-	case LIBUSB_LOG_LEVEL_DEBUG: syslog_level = LOG_DEBUG; break;
-	}
-	syslog(syslog_level, "%s", str);
-#else /* All of gcc, Clang, Xcode seem to use #warning */
-#warning System logging is not supported on this platform. Logging to stderr will be used instead.
-	fputs(str, stderr);
-#endif
-#else
 	/* Global log handler */
 	if (log_handler != NULL)
 		log_handler(NULL, level, str);
 	else
 		fputs(str, stderr);
-#endif /* USE_SYSTEM_LOGGING_FACILITY */
 	UNUSED(level);
 }
 

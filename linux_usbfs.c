@@ -1,5 +1,4 @@
-#include "config.h"
-
+#define _GNU_SOURCE
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -56,8 +55,6 @@ static pthread_mutex_t linux_hotplug_startstop_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Serialize scan-devices, event-thread, and poll */
 pthread_mutex_t linux_hotplug_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static int linux_start_event_monitor(void);
-static int linux_stop_event_monitor(void);
 static int linux_scan_devices(struct libusb_context *ctx);
 static int sysfs_scan_device(struct libusb_context *ctx, const char *devname);
 static int detach_kernel_driver_and_claim(struct libusb_device_handle *, int);
@@ -420,14 +417,14 @@ static int op_init(struct libusb_context *ctx)
 	r = LIBUSB_SUCCESS;
 	if (init_count == 0) {
 		/* start up hotplug event handler */
-		r = linux_start_event_monitor();
+		r = linux_udev_start_event_monitor();
 	}
 	if (r == LIBUSB_SUCCESS) {
 		r = linux_scan_devices(ctx);
 		if (r == LIBUSB_SUCCESS)
 			init_count++;
 		else if (init_count == 0)
-			linux_stop_event_monitor();
+			linux_udev_stop_event_monitor();
 	} else
 		usbi_err(ctx, "error starting hotplug event monitor");
 	pthread_mutex_unlock(&linux_hotplug_startstop_lock);
@@ -442,31 +439,9 @@ static void op_exit(struct libusb_context *ctx)
 	assert(init_count != 0);
 	if (!--init_count) {
 		/* tear down event handler */
-		(void)linux_stop_event_monitor();
+		(void)linux_udev_stop_event_monitor();
 	}
 	pthread_mutex_unlock(&linux_hotplug_startstop_lock);
-}
-
-static int linux_start_event_monitor(void)
-{
-#if defined(USE_UDEV)
-	return linux_udev_start_event_monitor();
-#elif !defined(__ANDROID__)
-	return linux_netlink_start_event_monitor();
-#else
-	return LIBUSB_SUCCESS;
-#endif
-}
-
-static int linux_stop_event_monitor(void)
-{
-#if defined(USE_UDEV)
-	return linux_udev_stop_event_monitor();
-#elif !defined(__ANDROID__)
-	return linux_netlink_stop_event_monitor();
-#else
-	return LIBUSB_SUCCESS;
-#endif
 }
 
 static int linux_scan_devices(struct libusb_context *ctx)
@@ -484,15 +459,6 @@ static int linux_scan_devices(struct libusb_context *ctx)
 	pthread_mutex_unlock(&linux_hotplug_lock);
 
 	return ret;
-}
-
-static void op_hotplug_poll(void)
-{
-#if defined(USE_UDEV)
-	linux_udev_hotplug_poll();
-#elif !defined(__ANDROID__)
-	linux_netlink_hotplug_poll();
-#endif
 }
 
 static int _open_sysfs_attr(struct libusb_device *dev, const char *attr)
@@ -2672,7 +2638,7 @@ static int reap_for_handle(struct libusb_device_handle *handle)
 }
 
 static int op_handle_events(struct libusb_context *ctx,
-	struct pollfd *fds, POLL_NFDS_TYPE nfds, int num_ready)
+	struct pollfd *fds, nfds_t nfds, int num_ready)
 {
 	int r;
 	unsigned int i = 0;
@@ -2765,7 +2731,7 @@ const struct usbi_os_backend usbi_backend = {
 	.init = op_init,
 	.exit = op_exit,
 	.get_device_list = NULL,
-	.hotplug_poll = op_hotplug_poll,
+	.hotplug_poll = linux_udev_hotplug_poll,
 	.get_device_descriptor = op_get_device_descriptor,
 	.get_active_config_descriptor = op_get_active_config_descriptor,
 	.get_config_descriptor = op_get_config_descriptor,

@@ -1,29 +1,5 @@
-/*
- * Internal header for libusb
- * Copyright © 2007-2009 Daniel Drake <dsd@gentoo.org>
- * Copyright © 2001 Johannes Erdfelt <johannes@erdfelt.com>
- * Copyright © 2019 Nathan Hjelm <hjelmn@cs.umm.edu>
- * Copyright © 2019 Google LLC. All rights reserved.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- */
-
 #ifndef LIBUSBI_H
 #define LIBUSBI_H
-
-#include <config.h>
 
 #include <stdlib.h>
 #include <assert.h>
@@ -31,12 +7,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <stdarg.h>
-#ifdef HAVE_POLL_H
 #include <poll.h>
-#endif
-#ifdef HAVE_MISSING_H
-#include <missing.h>
-#endif
 
 #include "libusb.h"
 #include "version.h"
@@ -55,13 +26,10 @@
 #define PTR_ALIGNED
 #endif
 
-/* Inside the libusb code, mark all public functions as follows:
- *   return_type API_EXPORTED function_name(params) { ... }
- * But if the function returns a pointer, mark it as follows:
- *   DEFAULT_VISIBILITY return_type *function_name(params) { ... }
- * In the libusb public header, mark all declarations as:
- *   return_type function_name(params);
- */
+
+/* Message logging */
+#define ENABLE_LOGGING 1
+#define DEFAULT_VISIBILITY __attribute__((visibility("default")))
 #define API_EXPORTED DEFAULT_VISIBILITY
 
 /* Macro to decorate printf-like functions, in order to get
@@ -368,7 +336,7 @@ struct libusb_context {
          * between the poll call and */
         struct list_head removed_ipollfds;
 	struct pollfd *pollfds;
-	POLL_NFDS_TYPE pollfds_cnt;
+	nfds_t pollfds_cnt;
 
 	/* A list of pending hotplug messages. Protected by event_data_lock. */
 	struct list_head hotplug_msgs;
@@ -571,13 +539,8 @@ int usbi_signal_event(struct libusb_context *ctx);
 int usbi_clear_event(struct libusb_context *ctx);
 
 /* Internal abstraction for poll (needs struct usbi_transfer on Windows) */
-#if defined(OS_LINUX) || defined(OS_DARWIN) || defined(OS_OPENBSD) || defined(OS_NETBSD) ||\
-	defined(OS_HAIKU) || defined(OS_SUNOS)
 #include <unistd.h>
 #include "poll_posix.h"
-#elif defined(OS_WINDOWS) || defined(OS_WINCE)
-#include "poll_windows.h"
-#endif
 
 struct usbi_pollfd {
 	/* must come first */
@@ -1131,7 +1094,7 @@ struct usbi_os_backend {
 	 * Return 0 on success, or a LIBUSB_ERROR code on failure.
 	 */
 	int (*handle_events)(struct libusb_context *ctx,
-		struct pollfd *fds, POLL_NFDS_TYPE nfds, int num_ready);
+		struct pollfd *fds, nfds_t nfds, int num_ready);
 
 	/* Handle transfer completion. Optional.
 	 *
