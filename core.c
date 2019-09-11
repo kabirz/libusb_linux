@@ -303,7 +303,7 @@ int API_EXPORTED libusb_get_port_path(libusb_context *ctx, libusb_device *dev,
 }
 
 DEFAULT_VISIBILITY
-libusb_device * LIBUSB_CALL libusb_get_parent(libusb_device *dev)
+libusb_device *libusb_get_parent(libusb_device *dev)
 {
 	return dev->parent_dev;
 }
@@ -420,7 +420,7 @@ out:
 }
 
 DEFAULT_VISIBILITY
-libusb_device * LIBUSB_CALL libusb_ref_device(libusb_device *dev)
+libusb_device *libusb_ref_device(libusb_device *dev)
 {
 	pthread_mutex_lock(&dev->lock);
 	dev->refcnt++;
@@ -577,7 +577,7 @@ int API_EXPORTED libusb_open(libusb_device *dev,
 }
 
 DEFAULT_VISIBILITY
-libusb_device_handle * LIBUSB_CALL libusb_open_device_with_vid_pid(
+libusb_device_handle *libusb_open_device_with_vid_pid(
 	libusb_context *ctx, uint16_t vendor_id, uint16_t product_id)
 {
 	struct libusb_device **devs;
@@ -695,7 +695,7 @@ void API_EXPORTED libusb_close(libusb_device_handle *dev_handle)
 }
 
 DEFAULT_VISIBILITY
-libusb_device * LIBUSB_CALL libusb_get_device(libusb_device_handle *dev_handle)
+libusb_device *libusb_get_device(libusb_device_handle *dev_handle)
 {
 	return dev_handle->dev;
 }
@@ -861,7 +861,7 @@ int API_EXPORTED libusb_free_streams(libusb_device_handle *dev_handle,
 }
 
 DEFAULT_VISIBILITY
-unsigned char * LIBUSB_CALL libusb_dev_mem_alloc(libusb_device_handle *dev_handle,
+unsigned char *libusb_dev_mem_alloc(libusb_device_handle *dev_handle,
         size_t length)
 {
 	if (!dev_handle->dev->attached)
@@ -1390,7 +1390,7 @@ void usbi_log(struct libusb_context *ctx, enum libusb_log_level level,
 
 #endif /* ENABLE_LOGGING */
 
-DEFAULT_VISIBILITY const char * LIBUSB_CALL libusb_error_name(int error_code)
+DEFAULT_VISIBILITY const char *libusb_error_name(int error_code)
 {
 	switch (error_code) {
 	case LIBUSB_ERROR_IO:
@@ -1441,7 +1441,7 @@ DEFAULT_VISIBILITY const char * LIBUSB_CALL libusb_error_name(int error_code)
 }
 
 DEFAULT_VISIBILITY
-const struct libusb_version * LIBUSB_CALL libusb_get_version(void)
+const struct libusb_version *libusb_get_version(void)
 {
 	return &libusb_version_internal;
 }

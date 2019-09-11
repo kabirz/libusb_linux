@@ -58,11 +58,11 @@
 /* Inside the libusb code, mark all public functions as follows:
  *   return_type API_EXPORTED function_name(params) { ... }
  * But if the function returns a pointer, mark it as follows:
- *   DEFAULT_VISIBILITY return_type * LIBUSB_CALL function_name(params) { ... }
+ *   DEFAULT_VISIBILITY return_type *function_name(params) { ... }
  * In the libusb public header, mark all declarations as:
- *   return_type LIBUSB_CALL function_name(params);
+ *   return_type function_name(params);
  */
-#define API_EXPORTED LIBUSB_CALL DEFAULT_VISIBILITY
+#define API_EXPORTED DEFAULT_VISIBILITY
 
 /* Macro to decorate printf-like functions, in order to get
  * compiler warnings about format string mistakes.

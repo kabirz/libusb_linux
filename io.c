@@ -140,7 +140,7 @@ static int calculate_timeout(struct usbi_transfer *transfer)
 }
 
 DEFAULT_VISIBILITY
-struct libusb_transfer * LIBUSB_CALL libusb_alloc_transfer(
+struct libusb_transfer *libusb_alloc_transfer(
 	int iso_packets)
 {
 	struct libusb_transfer *transfer;
@@ -1211,7 +1211,7 @@ void usbi_remove_pollfd(struct libusb_context *ctx, int fd)
 }
 
 DEFAULT_VISIBILITY
-const struct libusb_pollfd ** LIBUSB_CALL libusb_get_pollfds(
+const struct libusb_pollfd **libusb_get_pollfds(
 	libusb_context *ctx)
 {
 #ifndef OS_WINDOWS

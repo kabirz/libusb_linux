@@ -96,7 +96,7 @@ static const char* usbi_localized_errors[ARRAYSIZE(usbi_locale_supported)][LIBUS
 		"Память исчерпана",
 		"Операция не поддерживается данной платформой",
 		"Неизвестная ошибка"
-	
+
 	}, { /* German (de) */
 		"Erfolgreich",
 		"Eingabe-/Ausgabefehler",
@@ -152,7 +152,7 @@ int API_EXPORTED libusb_setlocale(const char *locale)
 	return LIBUSB_SUCCESS;
 }
 
-DEFAULT_VISIBILITY const char* LIBUSB_CALL libusb_strerror(enum libusb_error errcode)
+DEFAULT_VISIBILITY const char*libusb_strerror(enum libusb_error errcode)
 {
 	int errcode_index = -errcode;
 

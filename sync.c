@@ -7,7 +7,7 @@
 
 #include "libusbi.h"
 
-static void LIBUSB_CALL sync_transfer_cb(struct libusb_transfer *transfer)
+static void sync_transfer_cb(struct libusb_transfer *transfer)
 {
 	int *completed = transfer->user_data;
 	*completed = 1;
