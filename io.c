@@ -63,8 +63,8 @@ err_close_timerfd:
 	usbi_remove_pollfd(ctx, ctx->event_pipe[0]);
 #endif
 err_close_pipe:
-	usbi_close(ctx->event_pipe[0]);
-	usbi_close(ctx->event_pipe[1]);
+	close(ctx->event_pipe[0]);
+	close(ctx->event_pipe[1]);
 err:
 	pthread_mutex_destroy(&ctx->flying_transfers_lock);
 	pthread_mutex_destroy(&ctx->events_lock);
@@ -87,8 +87,8 @@ static void cleanup_removed_pollfds(struct libusb_context *ctx)
 void usbi_io_exit(struct libusb_context *ctx)
 {
 	usbi_remove_pollfd(ctx, ctx->event_pipe[0]);
-	usbi_close(ctx->event_pipe[0]);
-	usbi_close(ctx->event_pipe[1]);
+	close(ctx->event_pipe[0]);
+	close(ctx->event_pipe[1]);
 #ifdef USBI_TIMERFD_AVAILABLE
 	if (usbi_using_timerfd(ctx)) {
 		usbi_remove_pollfd(ctx, ctx->timerfd);
@@ -790,7 +790,6 @@ static int handle_events(struct libusb_context *ctx, struct timeval *tv)
 	}
 	fds = ctx->pollfds;
 	nfds = ctx->pollfds_cnt;
-	usbi_inc_fds_ref(fds, nfds);
 	pthread_mutex_unlock(&ctx->event_data_lock);
 
 	timeout_ms = (int)(tv->tv_sec * 1000) + (tv->tv_usec / 1000);
@@ -800,7 +799,7 @@ static int handle_events(struct libusb_context *ctx, struct timeval *tv)
 		timeout_ms++;
 
 	usbi_dbg("poll() %d fds with timeout in %dms", (int)nfds, timeout_ms);
-	r = usbi_poll(fds, nfds, timeout_ms);
+	r = poll(fds, nfds, timeout_ms);
 	usbi_dbg("poll() returned %d", r);
 	if (r == 0) {
 		r = handle_timeouts(ctx);
@@ -937,7 +936,6 @@ static int handle_events(struct libusb_context *ctx, struct timeval *tv)
 
 done:
 	usbi_end_event_handling(ctx);
-	usbi_dec_fds_ref(fds, nfds);
 	return r;
 }
 

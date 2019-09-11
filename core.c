@@ -455,7 +455,7 @@ int usbi_signal_event(struct libusb_context *ctx)
 	ssize_t r;
 
 	/* write some data on event pipe to interrupt event handlers */
-	r = usbi_write(ctx->event_pipe[1], &dummy, sizeof(dummy));
+	r = write(ctx->event_pipe[1], &dummy, sizeof(dummy));
 	if (r != sizeof(dummy)) {
 		usbi_warn(ctx, "internal signalling write failed");
 		return LIBUSB_ERROR_IO;
@@ -470,7 +470,7 @@ int usbi_clear_event(struct libusb_context *ctx)
 	ssize_t r;
 
 	/* read some data on event pipe to clear it */
-	r = usbi_read(ctx->event_pipe[0], &dummy, sizeof(dummy));
+	r = read(ctx->event_pipe[0], &dummy, sizeof(dummy));
 	if (r != sizeof(dummy)) {
 		usbi_warn(ctx, "internal signalling read failed");
 		return LIBUSB_ERROR_IO;

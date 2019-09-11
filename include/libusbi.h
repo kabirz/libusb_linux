@@ -540,8 +540,6 @@ int usbi_clear_event(struct libusb_context *ctx);
 
 /* Internal abstraction for poll (needs struct usbi_transfer on Windows) */
 #include <unistd.h>
-#include "poll_posix.h"
-
 struct usbi_pollfd {
 	/* must come first */
 	struct libusb_pollfd pollfd;
@@ -551,6 +549,7 @@ struct usbi_pollfd {
 
 int usbi_add_pollfd(struct libusb_context *ctx, int fd, short events);
 void usbi_remove_pollfd(struct libusb_context *ctx, int fd);
+int usbi_pipe(int pipefd[2]);
 
 /* device discovery */
 
