@@ -1,40 +1,8 @@
 #ifndef LIBUSB_H
 #define LIBUSB_H
 
-#ifdef _MSC_VER
-/* on MS environments, the inline keyword is available in C++ only */
-#if !defined(__cplusplus)
-#define inline __inline
-#endif
-/* ssize_t is also not available (copy/paste from MinGW) */
-#ifndef _SSIZE_T_DEFINED
-#define _SSIZE_T_DEFINED
-#undef ssize_t
-#ifdef _WIN64
-  typedef __int64 ssize_t;
-#else
-  typedef int ssize_t;
-#endif /* _WIN64 */
-#endif /* _SSIZE_T_DEFINED */
-#endif /* _MSC_VER */
-
-/* stdint.h is not available on older MSVC */
-#if defined(_MSC_VER) && (_MSC_VER < 1600) && (!defined(_STDINT)) && (!defined(_STDINT_H))
-typedef unsigned __int8   uint8_t;
-typedef unsigned __int16  uint16_t;
-typedef unsigned __int32  uint32_t;
-#else
 #include <stdint.h>
-#endif
-
-#if !defined(_WIN32_WCE)
-#include <sys/types.h>
-#endif
-
-#if defined(__linux__) || defined(__APPLE__) || defined(__CYGWIN__) || defined(__HAIKU__)
 #include <sys/time.h>
-#endif
-
 #include <time.h>
 #include <limits.h>
 
@@ -42,21 +10,6 @@ typedef unsigned __int32  uint32_t;
 #define ZERO_SIZED_ARRAY		/* [] - valid C99 code */
 #else
 #define ZERO_SIZED_ARRAY	0	/* [0] - non-standard, but usually working code */
-#endif
-
-/* 'interface' might be defined as a macro on Windows, so we need to
- * undefine it so as not to break the current libusb API, because
- * libusb_config_descriptor has an 'interface' member
- * As this can be problematic if you include windows.h after libusb.h
- * in your sources, we force windows.h to be included first. */
-#if defined(_WIN32) || defined(__CYGWIN__) || defined(_WIN32_WCE)
-#include <windows.h>
-#if defined(interface)
-#undef interface
-#endif
-#if !defined(__CYGWIN__)
-#include <winsock.h>
-#endif
 #endif
 
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
